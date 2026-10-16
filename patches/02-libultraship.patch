@@ -1,0 +1,313 @@
+diff --git a/cmake/dependencies/windows.cmake b/cmake/dependencies/windows.cmake
+index 6b3b7b2..79d894d 100644
+--- a/cmake/dependencies/windows.cmake
++++ b/cmake/dependencies/windows.cmake
+@@ -5,8 +5,13 @@ target_sources(ImGui
+ 	${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+ )
+ 
+-find_package(SDL2 CONFIG REQUIRED)
+-target_link_libraries(ImGui PUBLIC SDL2::SDL2 SDL2::SDL2main)
++if (BUILD_UWP)
++	# [UWP] SDL2 no viene de vcpkg sino del bundle uwp-dep, ya como DLL.
++	target_link_libraries(ImGui PUBLIC SDL2)
++else()
++	find_package(SDL2 CONFIG REQUIRED)
++	target_link_libraries(ImGui PUBLIC SDL2::SDL2 SDL2::SDL2main)
++endif()
+ 
+ find_package(GLEW REQUIRED)
+ target_link_libraries(ImGui PUBLIC opengl32 GLEW::GLEW)
+diff --git a/src/fast/Fast3dWindow.cpp b/src/fast/Fast3dWindow.cpp
+index 2b77a5f..e330c30 100644
+--- a/src/fast/Fast3dWindow.cpp
++++ b/src/fast/Fast3dWindow.cpp
+@@ -17,6 +17,11 @@
+ 
+ #include <fstream>
+ 
++#ifdef _UWP
++// [UWP] Lo exporta libuwp.dll, del bundle uwp-dep.
++extern "C" __declspec(dllimport) void uwp_GetScreenSize(int* x, int* y);
++#endif
++
+ namespace Fast {
+ 
+ extern void GfxSetInstance(std::shared_ptr<Interpreter> gfx);
+@@ -28,7 +33,11 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
+     mInterpreter = std::make_shared<Interpreter>();
+     GfxSetInstance(mInterpreter);
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(_UWP)
++    // [UWP] Fuera: su ventana la crea CreateWindowW, que en la consola no vale, y sustituirla por
++    // la CoreWindow deja la aplicacion sin activar y el shell la cierra a los 3 segundos. En UWP
++    // manda el backend de SDL, que crea la ventana de verdad. Detalle en
++    // xbox\herramientas\bk_parche_backend.py.
+     AddAvailableWindowBackend(WindowBackend::FAST3D_DXGI_DX11);
+ #endif
+ #ifdef __APPLE__
+@@ -92,8 +101,17 @@ void Fast3dWindow::Init() {
+         height =
+             Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Fullscreen.Height", gameMode ? 800 : 1080);
+     } else {
++#ifdef _UWP
++        // [UWP] 640x480 no tiene sentido en una consola: el tamano por defecto es el de la
++        // pantalla, que libuwp pregunta a la vista.
++        int uwpWidth, uwpHeight;
++        uwp_GetScreenSize(&uwpWidth, &uwpHeight);
++        width = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Width", uwpWidth);
++        height = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Height", uwpHeight);
++#else
+         width = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Width", 640);
+         height = Ship::Context::GetRawInstance()->GetConfig()->GetInt("Window.Height", 480);
++#endif
+     }
+     Ship::Context::GetRawInstance()->GetWindow()->SetFullscreenScancode(
+         Ship::Context::GetRawInstance()->GetConfig()->GetInt("Shortcuts.Fullscreen", Ship::KbScancode::LUS_KB_F11));
+diff --git a/src/fast/backends/gfx_dxgi.cpp b/src/fast/backends/gfx_dxgi.cpp
+index 09c04da..6d879a2 100644
+--- a/src/fast/backends/gfx_dxgi.cpp
++++ b/src/fast/backends/gfx_dxgi.cpp
+@@ -55,6 +55,15 @@
+ #endif
+ using QWORD = uint64_t; // For NEXTRAWINPUTBLOCK
+ 
++#ifdef _UWP
++// [UWP] Las exporta libuwp.dll: la ventana la crea el sistema (CoreWindow) y hay que bombear sus
++// eventos a mano o no sale nada por pantalla.
++extern "C" __declspec(dllimport) void* uwp_GetWindowReference();
++extern "C" __declspec(dllimport) void uwp_ProcessEvents();
++extern "C" __declspec(dllimport) float uwp_GetRefreshRate();
++extern "C" __declspec(dllimport) void uwp_GetScreenSize(int* x, int* y);
++#endif
++
+ #define ALLOW_BACKGROUND_INPUTS_BLOCK_ID 95237930
+ 
+ namespace Fast {
+@@ -246,6 +255,13 @@ static double HzToPeriod(double Frequency) {
+ }
+ 
+ static void GetMonitorHzPeriod(HMONITOR hMonitor, double& Frequency, double& Period) {
++#ifdef _UWP
++    // [UWP] EnumDisplaySettings no sirve en la consola; la vista sabe su propia cadencia.
++    (void)hMonitor;
++    Frequency = uwp_GetRefreshRate();
++    Period = HzToPeriod(Frequency);
++    return;
++#endif
+     DEVMODE dm = {};
+     dm.dmSize = sizeof(DEVMODE);
+     if (hMonitor != NULL) {
+@@ -262,6 +278,12 @@ static void GetMonitorHzPeriod(HMONITOR hMonitor, double& Frequency, double& Per
+ }
+ 
+ static void GetMonitorHzPeriod(std::tuple<HMONITOR, RECT, BOOL> Monitor, double& Frequency, double& Period) {
++#ifdef _UWP
++    (void)Monitor;
++    Frequency = uwp_GetRefreshRate();
++    Period = HzToPeriod(Frequency);
++    return;
++#endif
+     HMONITOR hMonitor = get<0>(Monitor);
+     DEVMODE dm = {};
+     dm.dmSize = sizeof(DEVMODE);
+@@ -303,6 +325,10 @@ void GfxWindowBackendDXGI::UpdateMousePrevPos() {
+ }
+ 
+ void GfxWindowBackendDXGI::HandleRawInputBuffered() {
++#ifdef _UWP
++    // [UWP] GetRawInputBuffer no existe en la consola; el mando entra por otra via.
++    return;
++#else
+     static UINT offset = -1;
+     if (offset == -1) {
+         offset = sizeof(RAWINPUTHEADER);
+@@ -351,6 +377,7 @@ void GfxWindowBackendDXGI::HandleRawInputBuffered() {
+             }
+         }
+     }
++#endif // _UWP HandleRawInputBuffered
+ }
+ 
+ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_param, LPARAM l_param) {
+@@ -600,8 +627,13 @@ void GfxWindowBackendDXGI::Init(const char* game_name, const char* gfx_api_name,
+         posY = 100;
+     }
+ 
++#ifdef _UWP
++    // [UWP] No se crea ventana: el sistema ya entrego una CoreWindow y se usa esa.
++    h_wnd = static_cast<HWND>(uwp_GetWindowReference());
++#else
+     h_wnd = CreateWindowW(WINCLASS_NAME, w_title, WS_OVERLAPPEDWINDOW, posX + wr.left, posY + wr.top, current_width,
+                           current_height, nullptr, nullptr, nullptr, this);
++#endif
+ 
+     LoadDxgi();
+ 
+@@ -915,6 +947,9 @@ bool GfxWindowBackendDXGI::IsFrameReady() {
+ }
+ 
+ void GfxWindowBackendDXGI::SwapBuffersBegin() {
++#ifdef _UWP
++    uwp_ProcessEvents(); // [UWP] sin esto no sale NADA por pantalla
++#endif
+     // mLengthInVsyncFrames (now mVsyncEnabled) was used as present interval. Present interval >1 (aka fractional
+     // V-Sync) breaks VRR and introduces even more input lag than capping via normal V-Sync does. Get the present
+     // interval the user wants instead (V-Sync toggle).
+@@ -1060,11 +1095,25 @@ void GfxWindowBackendDXGI::CreateSwapChain(IUnknown* mDevice, std::function<void
+ 
+     DXGI_SWAP_CHAIN_DESC1 swap_chain_desc = {};
+     swap_chain_desc.BufferCount = 3;
++#ifdef _UWP
++    // [UWP] CreateSwapChainForCoreWindow no admite 0: no hay ventana de la que deducir el tamano.
++    {
++        int uwpW = 0, uwpH = 0;
++        uwp_GetScreenSize(&uwpW, &uwpH);
++        swap_chain_desc.Width = uwpW > 0 ? (UINT)uwpW : 1920;
++        swap_chain_desc.Height = uwpH > 0 ? (UINT)uwpH : 1080;
++    }
++#else
+     swap_chain_desc.Width = 0;
+     swap_chain_desc.Height = 0;
++#endif
+     swap_chain_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+     swap_chain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
++#ifdef _UWP
++    swap_chain_desc.Scaling = DXGI_SCALING_STRETCH;
++#else
+     swap_chain_desc.Scaling = win8 ? DXGI_SCALING_NONE : DXGI_SCALING_STRETCH;
++#endif
+     swap_chain_desc.SwapEffect =
+         mDXGI11_4 ? DXGI_SWAP_EFFECT_FLIP_DISCARD : // Introduced in DXGI 1.4 and Windows 10
+             DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; // Apparently flip sequential was also backported to Win 7 Platform Update
+@@ -1074,8 +1123,13 @@ void GfxWindowBackendDXGI::CreateSwapChain(IUnknown* mDevice, std::function<void
+     }
+     swap_chain_desc.SampleDesc.Count = 1;
+ 
++#ifdef _UWP
++    ThrowIfFailed(mFactory->CreateSwapChainForCoreWindow(mDevice, static_cast<IUnknown*>(uwp_GetWindowReference()),
++                                                         &swap_chain_desc, nullptr, &swap_chain));
++#else
+     ThrowIfFailed(mFactory->CreateSwapChainForHwnd(mDevice, h_wnd, &swap_chain_desc, nullptr, nullptr, &swap_chain));
+     ThrowIfFailed(mFactory->MakeWindowAssociation(h_wnd, DXGI_MWA_NO_ALT_ENTER));
++#endif
+ 
+     ApplyMaxFrameLatency(true);
+ 
+@@ -1099,7 +1153,16 @@ IDXGISwapChain1* GfxWindowBackendDXGI::GetSwapChain() {
+ 
+ const char* GfxWindowBackendDXGI::GetKeyName(int scancode) {
+     static char text[64];
++#ifdef _UWP
++    // [UWP] En la consola solo esta la version ancha.
++    static wchar_t wtext[64];
++    if (GetKeyNameTextW(scancode << 16, wtext, 64) == 0 ||
++        WideCharToMultiByte(CP_UTF8, 0, wtext, -1, text, sizeof(text), NULL, NULL) == 0) {
++        text[0] = '\0';
++    }
++#else
+     GetKeyNameTextA(scancode << 16, text, 64);
++#endif
+     return text;
+ }
+ 
+diff --git a/src/fast/backends/gfx_sdl2.cpp b/src/fast/backends/gfx_sdl2.cpp
+index 15c5415..550901a 100644
+--- a/src/fast/backends/gfx_sdl2.cpp
++++ b/src/fast/backends/gfx_sdl2.cpp
+@@ -386,6 +386,15 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
+     }
+ 
+     mWnd = SDL_CreateWindow(title, posX, posY, mWindowWidth, mWindowHeight, flags);
++
++#ifdef _UWP
++    // [UWP] El subsistema de mandos va AQUI, con el video ya montado y la ventana creada: en el
++    // mismo SDL_Init que el video, el arranque muere al construir el motor. De este subsistema
++    // tira ImGui_ImplSDL2 para la navegacion, que en la consola es la unica entrada que hay.
++    if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
++        SPDLOG_ERROR("[UWP] SDL_INIT_GAMECONTROLLER fallo: {}", SDL_GetError());
++    }
++#endif
+ #ifdef _WIN32
+     // Get Windows window handle and use it to subclass the window procedure.
+     // Needed to circumvent SDLs DPI scaling problems under windows (original does only scale *sometimes*).
+diff --git a/src/ship/Context.cpp b/src/ship/Context.cpp
+index 361a1f7..f729f22 100644
+--- a/src/ship/Context.cpp
++++ b/src/ship/Context.cpp
+@@ -165,7 +165,14 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
+         sinks.push_back(systemConsoleSink);
+ #endif
+ 
++#ifdef _UWP
++        // [UWP] La carpeta de instalacion de un paquete es de SOLO LECTURA: el log va a
++        // LocalState, que es donde SDL_GetPrefPath resuelve en el backend WinRT.
++        const char* appPath = SDL_GetPrefPath("", "");
++        auto logPath = (std::string(appPath) + GetName() + ".log");
++#else
+         auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
++#endif
+         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
+         sinks.push_back(fileSink);
+ #ifdef _DEBUG
+diff --git a/src/ship/window/gui/Gui.cpp b/src/ship/window/gui/Gui.cpp
+index 1f9279b..11cf3dc 100644
+--- a/src/ship/window/gui/Gui.cpp
++++ b/src/ship/window/gui/Gui.cpp
+@@ -94,12 +94,17 @@ void Gui::Init() {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+     }
+ 
++#ifdef _UWP
++    // [UWP] Siempre encendida: en una consola el mando es la unica entrada que hay.
++    mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
++#else
+     if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+         GetMenuOrMenubarVisible()) {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+     } else {
+         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ 
+     GetGuiWindow("Stats")->Init();
+     GetGuiWindow("Console")->Init();
+@@ -141,14 +146,20 @@ bool Gui::GamepadNavigationEnabled() {
+ }
+ 
+ void Gui::BlockGamepadNavigation() {
++#ifndef _UWP
+     mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
++#endif
+ }
+ 
+ void Gui::UnblockGamepadNavigation() {
++#ifdef _UWP
++    mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
++#else
+     if (Ship::Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+         GetMenuOrMenubarVisible()) {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ }
+ 
+ ImGuiID Gui::GetMainGameWindowID() {
+@@ -177,11 +188,16 @@ void Gui::UpdateGamepadNavigation() {
+     const bool navWanted = Context::GetRawInstance()->GetConsoleVariables()->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) &&
+                            (GetMenuOrMenubarVisible() ||
+                             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
++#ifdef _UWP
++    (void)navWanted;
++    mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
++#else
+     if (navWanted) {
+         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+     } else {
+         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+     }
++#endif
+ }
+ 
+ void Gui::DrawMenu() {

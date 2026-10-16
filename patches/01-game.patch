@@ -1,0 +1,368 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 81cdd05..3bf0b31 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -97,12 +97,37 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules/")
+ set(YAML_CPP_STATIC_DEFINE ON)
+ add_compile_definitions(YAML_CPP_STATIC_DEFINE)
+ 
++option(BUILD_UWP "Build the native DLL used by the Xbox/UWP wrapper" OFF)
++
++if (BUILD_UWP)
++    # Un paquete UWP no puede escribir junto a su ejecutable: configuracion, partidas, mods y el
++    # bk.o2r van por SDL_GetPrefPath (LocalState).
++    set(NON_PORTABLE ON CACHE BOOL "Store user data in the platform app-data directory" FORCE)
++    # A nivel de directorio, para que llegue tambien a libultraship y a ImGui.
++    add_compile_definitions(_UWP=1 LIGHTHOUSE_UWP=1)
++endif()
++
+ if (WIN32)
++if (BUILD_UWP)
++    # SDL2, libuwp, mesa y glfw3 ya compilados para UWP. El mismo commit que usa el port de
++    # Star Fox 64, para no estrenar dos cosas a la vez.
++    FetchContent_Declare(UwpLibs
++        GIT_REPOSITORY https://github.com/worleydl/uwp-dep.git
++        GIT_TAG 0ec87d2406b47743772e2787654275a6f6c0e284
++    )
++    FetchContent_MakeAvailable(UwpLibs)
++endif()
++
+ include(cmake/automate-vcpkg.cmake)
+ set(VCPKG_TRIPLET x64-windows-static)
+ set(VCPKG_TARGET_TRIPLET x64-windows-static)
+ vcpkg_bootstrap()
+-vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis)
++if (BUILD_UWP)
++    # sdl2 y glfw3 salen del bundle, no de vcpkg.
++    vcpkg_install_packages(zlib bzip2 libzip libpng glew nlohmann-json tinyxml2 spdlog libogg libvorbis)
++else()
++    vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis)
++endif()
+ 
+ set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
+ set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+@@ -252,6 +277,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+         MACOSX_BUNDLE_INFO_PLIST ${IOS_DIR}/plist.in
+         RESOURCE "${IMAGE_FILES};${STORYBOARD_FILE};${ICON_FILES}"
+     )
++elseif(BUILD_UWP)
++    # [UWP] DLL, no ejecutable: la lanza el envoltorio WinRT de uwp\main.cpp.
++    add_library(${PROJECT_NAME} SHARED ${ALL_FILES})
+ else()
+     add_executable(${PROJECT_NAME} ${ALL_FILES})
+ endif()
+@@ -507,7 +535,11 @@ option(BUILD_OOT "Build with Ocarina of Time support" OFF)
+ option(BUILD_MARIO_ARTIST "Build with Mario Artist support" OFF)
+ option(BUILD_NAUDIO "Build with NAudio support" OFF)
+ add_subdirectory(Torch)
+-target_link_libraries(${PROJECT_NAME} PRIVATE torch "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
++if (BUILD_UWP)
++    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2 LIBUWP GLFW3 torch "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
++else()
++    target_link_libraries(${PROJECT_NAME} PRIVATE torch "${ADDITIONAL_LIBRARY_DEPENDENCIES}")
++endif()
+ 
+ if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch")
+ 
+diff --git a/src/port/Engine.cpp b/src/port/Engine.cpp
+index ed3960b..72a505d 100644
+--- a/src/port/Engine.cpp
++++ b/src/port/Engine.cpp
+@@ -373,20 +373,35 @@ void GameEngine::ScaleImGui() {
+ 
+ // Lifecycle
+ 
++
++#ifdef LIGHTHOUSE_UWP
++void BK_Apunta(const char* texto);
++#define BK_MIGA(x) BK_Apunta(x)
++#else
++#define BK_MIGA(x) ((void)0)
++#endif
++
+ void GameEngine::Create(int argc, char* argv[]) {
++    BK_MIGA("[bk] Create: entrando");
+     Lighthouse::ParseLaunchArgs(argc, argv);
++    BK_MIGA("[bk] Create: args parseados");
+     const auto instance = Instance = new GameEngine();
++    BK_MIGA("[bk] Create: GameEngine construido");
+     // instance->AudioInit();
+     // DisplayListPatch::Run();
+     // BK renders at 292x216, not the standard 320x240.
+     GfxSetNativeDimensions(292, 216);
++    BK_MIGA("[bk] Create: antes de RunExtract");
+     instance->RunExtract(argc, argv);
++    BK_MIGA("[bk] Create: RunExtract hecho");
+     instance->FinishInit();
++    BK_MIGA("[bk] Create: FinishInit hecho");
+     PortEnhancements_Init();
+     Anchor::Init();
+     SaveManager_Init();
+     ShipInit::InitAll();
+     ShipInit::Init("BOOT");
++    BK_MIGA("[bk] Create: BOOT hecho");
+     atexit([]() {
+         if (Instance && Instance->context && Instance->context->GetControlDeck()) {
+             for (int i = 0; i < 4; i++) {
+diff --git a/src/port/Extractor/ExtractFlow.cpp b/src/port/Extractor/ExtractFlow.cpp
+index 14ad819..e7fe079 100644
+--- a/src/port/Extractor/ExtractFlow.cpp
++++ b/src/port/Extractor/ExtractFlow.cpp
+@@ -145,18 +145,29 @@ bool AnyRomArchiveExists() {
+ 
+ } // namespace
+ 
++#ifdef LIGHTHOUSE_UWP
++void BK_Apunta(const char* texto);
++#define BK_MIGA(x) BK_Apunta(x)
++#else
++#define BK_MIGA(x) ((void)0)
++#endif
++
+ void GameEngine::RunExtract(int argc, char* argv[]) {
++    BK_MIGA("[bk] RunExtract: entrando");
+     bool extractDone = false;
+     ExtractSteps extractStep = ES_PORT_ARCHIVE;
+     WindowsSteps windowsStep = WS_TEMP;
+     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(context->GetWindow());
++    BK_MIGA(wnd == nullptr ? "[bk] RunExtract: LA VENTANA ES NULA" : "[bk] RunExtract: ventana ok");
+     auto gui = wnd->GetGui();
++    BK_MIGA("[bk] RunExtract: gui ok");
+     bool menuWasVisible = false;
+     if (gui->GetMenu()->IsVisible()) {
+         menuWasVisible = true;
+         gui->GetMenu()->Hide();
+     }
+ 
++    BK_MIGA("[bk] RunExtract: antes de buscar los o2r");
+     OTRVersion romArchiveVersion = { INT16_MAX, 0, 0 };
+     for (const auto& archive : kRomArchives) {
+         OTRVersion ver = DetectOTRVersion(archive);
+@@ -166,7 +177,16 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
+         }
+     }
+ 
++    BK_MIGA(romArchiveVersion.major == INT16_MAX ? "[bk] RunExtract: NO encontro ningun o2r"
++                                                  : "[bk] RunExtract: o2r encontrado");
+     bool shouldRegen = !VerifyArchiveVersion(romArchiveVersion) && romArchiveVersion.major != INT16_MAX;
++    {
++        char linea[160];
++        snprintf(linea, sizeof(linea), "[bk] RunExtract: version o2r %d.%d.%d  shouldRegen=%d",
++                 romArchiveVersion.major, romArchiveVersion.minor, romArchiveVersion.patch,
++                 shouldRegen ? 1 : 0);
++        BK_MIGA(linea);
++    }
+ 
+     std::filesystem::path ownPath;
+     std::vector<std::string> args;
+@@ -229,6 +249,17 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
+ 
+     std::shared_ptr<BS::thread_pool> threadPool = std::make_shared<BS::thread_pool>(1);
+     while (!extractDone) {
++        {
++            static int vueltas = 0;
++            if (vueltas < 3 || (vueltas % 120) == 0) {
++                char linea[160];
++                snprintf(linea, sizeof(linea), "[bk] bucle vuelta %d  paso=%d prompt=%d popups=%d",
++                         vueltas, (int)extractStep, (int)promptStep,
++                         (int)LighthouseGui::PopupsQueued());
++                BK_MIGA(linea);
++            }
++            vueltas++;
++        }
+         if (GameExtractor::sCustomCodePromptRequested.load()) {
+             GameExtractor::sCustomCodePromptRequested = false;
+             LighthouseGui::RegisterPopup(
+@@ -290,6 +321,15 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
+                 continue;
+             }
+             case ES_WINDOWS: {
++#ifdef LIGHTHOUSE_UWP
++                // [UWP] Paso saltado a proposito. Comprueba dos cosas de escritorio -- si el juego
++                // corre desde %TEMP% y si puede escribir junto al ejecutable-- valiendose de
++                // getenv, que en UWP devuelve SIEMPRE NULL porque el proceso no tiene bloque de
++                // entorno. En un paquete las dos respuestas ya se saben y de escribir se encarga
++                // NON_PORTABLE, que lleva todo a LocalState. Ver bk_parche_eswindows.py.
++                extractStep = ES_EXTRACT_ARGS;
++                continue;
++#endif
+                 switch (windowsStep) {
+                     case WS_TEMP: {
+ #ifdef _WIN32
+@@ -595,8 +635,18 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
+             static_cast<UIWidgets::Colors>(CVarGetInteger(CVAR_SETTING("Menu.Theme"), UIWidgets::Colors::LightBlue));
+         ImGui::PushStyleColor(ImGuiCol_TitleBgActive, UIWidgets::ColorValues.at(themeColor));
+         ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, UIWidgets::ColorValues.at(UIWidgets::Colors::DarkGray));
+-        if (!wnd->IsFrameReady()) {
+-            continue;
++        {
++            static int noListo = 0;
++            bool listo = wnd->IsFrameReady();
++            if (!listo) {
++                if (noListo < 3 || (noListo % 300) == 0) {
++                    char linea[96];
++                    snprintf(linea, sizeof(linea), "[bk] render: cuadro NO listo (%d)", noListo);
++                    BK_MIGA(linea);
++                }
++                noListo++;
++                continue;
++            }
+         }
+         gui->StartDraw();
+         lhFast3dWindow->StartFrame();
+diff --git a/src/port/Game.cpp b/src/port/Game.cpp
+index b870b20..1317ade 100644
+--- a/src/port/Game.cpp
++++ b/src/port/Game.cpp
+@@ -1,3 +1,10 @@
++#ifdef LIGHTHOUSE_UWP
++// [UWP] El envoltorio WinRT esta en otro binario y llama aqui: SDL_main tiene que salir exportada
++// de la DLL. SDL_main.h declara la funcion con este macro, asi que hay que definirlo antes de
++// cualquier include.
++#define SDLMAIN_DECLSPEC __declspec(dllexport)
++#endif
++
+ #include "Engine.h"
+ #include <atomic>
+ #include <condition_variable>
+@@ -277,6 +284,34 @@ void push_frame() {
+ #define SDL_main main
+ #endif
+ 
++
++#ifdef LIGHTHOUSE_UWP
++// [UWP] En la consola no hay stderr y el log del motor todavia no existe en el arranque: esto
++// escribe en LocalState, que es lo unico legible desde el PC por el Device Portal.
++extern "C" __declspec(dllimport) void uwp_ProcessEvents();
++
++void BK_Apunta(const char* texto) {
++    // Ojo: NADA de uwp_ProcessEvents aqui. Despachar la cola desde la funcion de migas reentra en
++    // la vista de la aplicacion y reinicia el arranque. Ver bk_quitar_bombeo.py.
++    char* base = SDL_GetPrefPath("", "");
++    if (base == NULL) {
++        return;
++    }
++    char ruta[512];
++    snprintf(ruta, sizeof(ruta), "%sarranque.txt", base);
++    static const unsigned long long inicio = GetTickCount64();
++    FILE* f = fopen(ruta, "a");
++    if (f != NULL) {
++        fprintf(f, "[%6llu ms] %s\n", GetTickCount64() - inicio, texto);
++        fclose(f);
++    }
++    SDL_free(base);
++}
++#define BK_MIGA(x) BK_Apunta(x)
++#else
++#define BK_MIGA(x) ((void)0)
++#endif
++
+ int SDL_main(int argc, char* argv[]) {
+ #ifdef _WIN32
+     timeBeginPeriod(1);
+@@ -300,21 +335,40 @@ int SDL_main(int argc, char* argv[]) {
+         }
+     }
+ 
++    BK_MIGA("[bk] antes de GameEngine::Create");
+     GameEngine::Create(argc, argv);
++    BK_MIGA("[bk] motor creado");
+     // Both threads are created during core1_init, so allowlist them first.
+     OS_EnableThreadEntry((void*)viMgr_entry);
+     EnableThread5();
+     core1_init();
++    BK_MIGA("[bk] core1_init hecho");
+     ThreadWatchdog_Start();
+ 
+     sGameThread = std::thread([] {
+         tIsGameThread = true;
+-        while (WindowIsRunning()) {
+-            ThreadWatchdog_Beat(WATCHDOG_GAME_TICK);
+-            push_frame();
++        BK_MIGA("[bk] hilo de juego arrancado");
++#ifdef LIGHTHOUSE_UWP
++        // Una excepcion que escapa de un std::thread llama a std::terminate y mata el proceso sin
++        // pasar por ningun catch: aqui se atrapa para poder leer el what().
++        try {
++#endif
++            while (WindowIsRunning()) {
++                ThreadWatchdog_Beat(WATCHDOG_GAME_TICK);
++                push_frame();
++            }
++#ifdef LIGHTHOUSE_UWP
++        } catch (const std::exception& e) {
++            char linea[1024];
++            snprintf(linea, sizeof(linea), "[bk] EXCEPCION en el hilo de juego: %s", e.what());
++            BK_MIGA(linea);
++        } catch (...) {
++            BK_MIGA("[bk] EXCEPCION desconocida en el hilo de juego");
+         }
++#endif
+         sGameThreadDone.store(true);
+     });
++    BK_MIGA("[bk] entrando al bucle principal");
+     while (WindowIsRunning() || !sGameThreadDone.load()) {
+         ThreadWatchdog_Beat(WATCHDOG_MAIN_LOOP);
+         port_noteMainLoopAlive();
+diff --git a/src/port/Rando/Rando.cpp b/src/port/Rando/Rando.cpp
+index 6dd76de..030c74f 100644
+--- a/src/port/Rando/Rando.cpp
++++ b/src/port/Rando/Rando.cpp
+@@ -15,7 +15,13 @@
+ namespace fs = std::filesystem;
+ 
+ int16_t selectedFileNum = DEFAULT_FILE_NUM;
+-const fs::path randomizerFolderPath(Ship::Context::GetPathRelativeToAppDirectory("randomizer", "bk64"));
++// [UWP] Perezosa a proposito: como global, su inicializador corre dentro de DllMain y
++// SDL_GetPrefPath lanza ahi (ver herramientas\bk_parche_globales.py).
++static const fs::path& RandomizerFolderPath() {
++    static const fs::path ruta(Ship::Context::GetPathRelativeToAppDirectory("randomizer", "bk64"));
++    return ruta;
++}
++#define randomizerFolderPath RandomizerFolderPath()
+ 
+ // Entry point for the module, run once on game boot
+ void Rando::Init() {
+diff --git a/src/port/Rando/Spoiler/RefreshOptions.cpp b/src/port/Rando/Spoiler/RefreshOptions.cpp
+index 9bd7f0c..99bfb8d 100644
+--- a/src/port/Rando/Spoiler/RefreshOptions.cpp
++++ b/src/port/Rando/Spoiler/RefreshOptions.cpp
+@@ -7,7 +7,13 @@
+ #include "port/UI/cvar_prefixes.h"
+ 
+ std::vector<std::string> Rando::Spoiler::spoilerLogs;
+-const std::filesystem::path randomizerFolderPath(Ship::Context::GetPathRelativeToAppDirectory("randomizer", "bk64"));
++// [UWP] Perezosa: mismo motivo que en Rando.cpp.
++static const std::filesystem::path& RandomizerFolderPath() {
++    static const std::filesystem::path ruta(
++        Ship::Context::GetPathRelativeToAppDirectory("randomizer", "bk64"));
++    return ruta;
++}
++#define randomizerFolderPath RandomizerFolderPath()
+ 
+ void Rando::Spoiler::RefreshSpoilerLogs() {
+     Rando::Spoiler::spoilerLogs.clear();
+diff --git a/src/port/Save/SaveManager.cpp b/src/port/Save/SaveManager.cpp
+index 455c743..bb8543f 100644
+--- a/src/port/Save/SaveManager.cpp
++++ b/src/port/Save/SaveManager.cpp
+@@ -32,8 +32,17 @@ using nlohmann::json;
+ using nlohmann::ordered_json;
+ namespace fs = std::filesystem;
+ static bool mLoaded = false;
+-const std::string savesFolderPathString(Ship::Context::GetPathRelativeToAppDirectory("saves"));
+-const std::filesystem::path savesFolderPath(savesFolderPathString);
++// [UWP] Perezosas: mismo motivo que en Rando.cpp.
++static const std::string& SavesFolderPathString() {
++    static const std::string ruta(Ship::Context::GetPathRelativeToAppDirectory("saves"));
++    return ruta;
++}
++static const std::filesystem::path& SavesFolderPath() {
++    static const std::filesystem::path ruta(SavesFolderPathString());
++    return ruta;
++}
++#define savesFolderPathString SavesFolderPathString()
++#define savesFolderPath SavesFolderPath()
+ 
+ #define CVAR_NAME_BOTTLES_BONUS CVAR_ENHANCEMENT("Saving.PersistBottlesBonus")
+ 

@@ -1,0 +1,39 @@
+MIT License
+
+Copyright (c) 2026 Recompilaciones
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+This MIT license covers the FIRST-PARTY work in this repository: the UWP entry point and
+compatibility layer (src/), the patch, build, packaging and verification tooling (tools/), the
+package manifest (package/), and the documentation.
+
+The game project this builds on, HarbourMasters/Lighthouse
+(https://github.com/HarbourMasters/Lighthouse), is CC0-1.0, and the engine the patches touch,
+libultraship (MIT, Copyright (c) 2022 kenix3), asks for attribution: MIT is the license that
+covers both honestly. The shape of the solution comes from JRickey/Starship (CC0-1.0), whose
+patches are not reused here.
+
+This license does NOT and cannot grant rights in Banjo-Kazooie, its code, its assets or its
+trademarks.
+This repository contains no game ROM, no game assets and no built executable. What is quoted
+here of other people's work - how much of it, what it is and where it comes from - is measured
+in NOTICE.md.

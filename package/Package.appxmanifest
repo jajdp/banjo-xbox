@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap mp rescap">
+
+  <!-- CAMBIA LAS DOS PRIMERAS LINEAS POR LAS TUYAS antes de empaquetar.
+
+       Publisher tiene que ser IDENTICO al sujeto de tu certificado de firma (docs/INSTALL.md
+       seccion 4). MSBuild compara las dos cadenas al firmar, y la consola tambien.
+
+       Name es el nombre interno del paquete. Con el Publisher forma la FAMILIA, que es como la
+       consola reconoce al juego y de la que cuelga su LocalState: ahi viven los datos del juego
+       y tus partidas. Eligelo una vez y dejalo. -->
+  <Identity
+    Name="CHANGE-ME-BanjoKazooie"
+    Publisher="CN=CHANGE-ME"
+    Version="0.1.1.1" />
+
+  <mp:PhoneIdentity PhoneProductId="b7c31d28-49a6-4f02-9e5d-1a63c8f47205" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+
+  <Properties>
+    <DisplayName>Banjo-Kazooie Decomp</DisplayName>
+    <PublisherDisplayName>CHANGE-ME</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="uwp.App">
+      <!-- Solo sq y ss: el mosaico ancho no lo dibuja la consola en modo desarrollador. -->
+      <uap:VisualElements
+        DisplayName="Banjo-Kazooie Decomp"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        Description="UWP build of the Lighthouse decompilation of Banjo-Kazooie, for an Xbox Series in Developer Mode"
+        BackgroundColor="transparent">
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+        <uap:DefaultTile/>
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust"/>
+    <rescap:Capability Name="broadFileSystemAccess" />
+    <rescap:Capability Name="expandedResources" />
+    <Capability Name="internetClient" />
+    <uap:Capability Name="removableStorage"/>
+    <Capability Name="codeGeneration"/>
+    <Capability Name="internetClientServer"/>
+    <Capability Name="privateNetworkClientServer"/>
+  </Capabilities>
+</Package>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
