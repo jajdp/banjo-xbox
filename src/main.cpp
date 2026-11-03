@@ -5,8 +5,8 @@
 // la referencia a la CoreWindow para que los OTROS hilos (el de render, que corre aparte) puedan
 // pedirla despues sin tocar el hilo de la interfaz.
 //
-// Igual que en el port de Diddy Kong Racing, la plantilla C++/CX de SDL no se usa: lo que hace
-// cabe en C++ normal.
+// La plantilla C++/CX de SDL no se usa: lo que hace cabe en C++ normal, y clang no compila
+// C++/CX.
 //
 // ACTIVAR LA VENTANA ES OBLIGATORIO, y fue lo que costo el arranque. Sintoma: el proceso moria
 // entre t+3 y t+4 SIEMPRE, en el punto del arranque que le tocara, sin excepcion en ningun hilo
