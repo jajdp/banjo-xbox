@@ -118,6 +118,20 @@ from this exact tree. The verified claim is the recipe.
 
 ## Credits and license
 
+**Almost none of what makes this work is ours.** This repository is a recipe that glues together other people's work; without any one of these pieces there would be no port at all.
+
+| What it does | Who made it | License |
+|---|---|---|
+| **[Lighthouse](https://github.com/HarbourMasters/Lighthouse)** — the *Banjo-Kazooie* PC port | **HarbourMasters** | CC0-1.0 |
+| **[Starship](https://github.com/JRickey/Starship)** — the *Star Fox 64* PC port | **JRickey** | CC0-1.0 |
+| **[uwp-dep](https://github.com/worleydl/uwp-dep)** — Dawn, SDL3, nod and dxcompiler **built for UWP** — the single reason any of this runs on an Xbox | **Daniel Worley** (worleydl) | libuwp: zlib, © 2025 |
+| **[SDL](https://github.com/libsdl-org/SDL)** — window, input and audio | **Sam Lantinga** and the SDL contributors | zlib |
+
+Special mention to **Daniel Worley**: the UWP builds in `uwp-dep` are what make an Xbox port of this possible. We did not build them, we used them.
+
+**The packaging recipe, the tooling and this documentation** are by **Recompilaciones**.
+
+
 Port and tooling by **Recompilaciones**, under the [MIT License](LICENSE). The game project is CC0-1.0 and the engine this port patches, libultraship, is MIT; MIT is
 the one that covers both and asks for attribution, which is the honest reading.
 
